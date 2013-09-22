@@ -1,0 +1,291 @@
+﻿<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <title>Home Loan Interest Calculator and Amortization Schedule Calculator</title>
+    <link rel="stylesheet" type="text/css" href="css/view.css" media="all">
+    <script type="text/javascript" src="js/view.js"></script>
+    <script type="text/javascript" src="js/jquery-1.9.1.min.js"></script>
+    <script type="text/javascript" src="js/calculations.js"></script>
+    <script type="text/javascript" src="js/calendar.js"></script>
+    <script type="text/javascript" src="js/jquery.validate.min.js"></script>
+    <script type="text/javascript" src="js/json2.js"></script>
+    <script type="text/javascript" src="js/jstorage.min.js"></script>
+
+    <script type="text/javascript">
+        $(document).ready(function () {
+            preloadLocalValues();
+            GeneratePrepaymentList("divPrepaymentList");
+        });
+
+        // Defining an array of prepayment objects
+        function btnAddPrepayment_Click() {
+            if ($("#form2").valid() == false) {
+                return;
+            }
+
+            var dd = $("#element_6_1").val();
+            var mm = $("#element_6_2").val();
+            var yy = $("#element_6_3").val();
+
+            var dt = new Date(yy, (mm - 1), dd, 0, 0, 0, 0);
+            var typeOfChange = $("#element_8").val();
+            var valueOfChange = $("#element_7").val();
+
+            AddPrePayment(dt, typeOfChange, valueOfChange);
+            GeneratePrepaymentList("divPrepaymentList");
+            return false;
+        }
+
+        function btnCalculate_Click() {
+            if ($("#form1").valid() == false) {
+                return;
+            }
+
+            var dd = $("#element_4_1").val();
+            var mm = $("#element_4_2").val();
+            var yy = $("#element_4_3").val();
+
+            var dt = new Date(yy, (mm - 1), dd, 0, 0, 0, 0);
+
+            // Getting the principal amount
+            var p = Number($("#element_1").val());
+            var n = Number($("#element_3").val());
+            var i = Number($("#element_2").val());
+
+            // Saving to local cache
+            saveValuesToLS(p, n, i, dt);
+            CalculateStuff(p, n, i, dt);
+        }
+
+        function saveValuesToLS(pa, nom, roi, sd) {
+            $.jStorage.set("pa", pa);
+            $.jStorage.set("nom", nom);
+            $.jStorage.set("roi", roi);
+
+            $.jStorage.set("dd", sd.getDate());
+            $.jStorage.set("mm", sd.getMonth());
+            $.jStorage.set("yy", sd.getFullYear());
+            
+            $.jStorage.set("pp", PRE_PAYMENTS);
+        }
+
+        function preloadLocalValues() {
+            var pa = $.jStorage.get("pa", 100000);
+            var nom = $.jStorage.get("nom", 240);
+            var roi = $.jStorage.get("roi", 11);
+
+            var dt = new Date();
+            var dd = $.jStorage.get("dd", 01);
+            var mm = $.jStorage.get("mm", Number(dt.getMonth()) + 1);
+            var yy = $.jStorage.get("yy", dt.getFullYear());
+
+            var sd = new Date(yy, mm, dd, 0, 0, 0);
+            PRE_PAYMENTS = $.jStorage.get("pp", new Array());
+
+            for (var i = 0; i < PRE_PAYMENTS.length; i++) {
+                PRE_PAYMENTS[i].dateOfChange = new Date(PRE_PAYMENTS[i].dateOfChange);
+                PRE_PAYMENTS[i].valueOfChange = Number(PRE_PAYMENTS[i].valueOfChange);
+            }
+
+            $("#element_1").val(pa);
+            $("#element_2").val(roi);
+            $("#element_3").val(nom);
+
+            $("#element_4_1").val(sd.getDate());
+            $("#element_4_2").val(sd.getMonth() + 1);
+            $("#element_4_3").val(sd.getFullYear());
+        }
+        
+        function clearLS() {
+            $.jStorage.flush();
+            alert("Local storage cleared. The page will now refresh.");
+            location.reload(true);
+        }
+    </script>
+
+</head>
+<body id="main_body">
+
+    <img id="top" src="images/top.png" alt="">
+    <div id="form_container">
+        <h1><a>Amortization Schedule Calculator</a></h1>
+        <h1><a>Home Loan Interest Calculator</a></h1>
+        <form id="form1" class="appnitro" method="post" action="">
+            <div class="form_description" style="border-bottom: none">
+                <h2>Amortization Schedule Calculator</h2>
+                <h2>Home Loan Interest Calculator</h2>
+                <p>This tool will generate a table of payments and take into account pre payments made and rate of interest changes.</p>
+                <p>I have put this up in my spare time. To get in touch: <a href="https://docs.google.com/forms/d/1YJGjgOpoRcUaPppdA4pnYq_zZGw6wWAevRu4dyzzkrw/viewform" target="_blank">Click Here</a></p>
+            </div>
+
+            <ul>
+                <li class="section_break">
+                    <h3>A. Basic Loan Details</h3>
+                    <p>Add basic details of your loan here. EMI is calculated for you.</p>
+                </li>
+                <li id="li_1">
+                    <label class="description" for="element_1">Principal Amount </label>
+                    <div>
+                        <input id="element_1" name="element_1" class="element text medium" type="number" maxlength="255" value="" required />
+                    </div>
+                </li>
+                <li id="li_2">
+                    <label class="description" for="element_2">Rate of Interest (Annual) </label>
+                    <div>
+                        <input id="element_2" name="element_2" class="element text small" type="number" maxlength="255" value="" required />
+                    </div>
+                </li>
+                <li id="li_3">
+                    <label class="description" for="element_3">Number of Months</label>
+                    <div>
+                        <input id="element_3" name="element_3" class="element text small" type="number" maxlength="255" value="" required />
+                    </div>
+                </li>
+                <li id="li_4">
+                    <label class="description" for="element_4">Loan Start Date </label>
+                    <span>
+                        <input id="element_4_1" name="element_4_1" class="element text" size="2" maxlength="2" value="" type="digits" required>
+                        /
+                        <label for="element_4_1">DD</label>
+                    </span>
+                    <span>
+                        <input id="element_4_2" name="element_4_2" class="element text" size="2" maxlength="2" value="" type="digits" required>
+                        /
+                        <label for="element_4_2">MM</label>
+                    </span>
+                    <span>
+                        <input id="element_4_3" name="element_4_3" class="element text" size="4" maxlength="4" value="" type="digits" required>
+                        <label for="element_4_3">YYYY</label>
+                    </span>
+
+                    <span id="calendar_4">
+                        <img id="cal_img_4" class="datepicker" src="images/calendar.gif" alt="Pick a date.">
+                    </span>
+                    <script type="text/javascript">
+                        Calendar.setup({
+                            inputField: "element_4_3",
+                            baseField: "element_4",
+                            displayArea: "calendar_4",
+                            button: "cal_img_4",
+                            ifFormat: "%B %e, %Y",
+                            onSelect: selectEuropeDate
+                        });
+                    </script>
+                </li>
+            </ul>
+        </form>
+        <form id="form2" class="appnitro" method="post" action="">
+            <ul>
+                <li class="section_break">
+                    <h3>B. Prepayments and Rate of Interest Changes</h3>
+                    <p>If you have made any pre payments or change of EMI / interest, add them here to recalculate amortization schedule.</p>
+                </li>
+                <li id="li_6">
+                    <label class="description" for="element_6">Date of Prepayment / Interest Change </label>
+                    <span>
+                        <input id="element_6_1" name="element_6_1" class="element text" size="2" maxlength="2" value="" type="digits" required>
+                        /
+                        <label for="element_6_1">DD</label>
+                    </span>
+                    <span>
+                        <input id="element_6_2" name="element_6_2" class="element text" size="2" maxlength="2" value="" type="digits" required>
+                        /     		     		       
+                        <label for="element_6_2">MM</label>
+                    </span>
+                    <span>
+                        <input id="element_6_3" name="element_6_3" class="element text" size="4" maxlength="4" value="" type="digits" required>
+                        <label for="element_6_3">YYYY</label>
+                    </span>
+
+                    <span id="calendar_6">
+                        <img id="cal_img_6" class="datepicker" src="images/calendar.gif" alt="Pick a date.">
+                    </span>
+                    <script type="text/javascript">
+                        Calendar.setup({
+                            inputField: "element_6_3",
+                            baseField: "element_6",
+                            displayArea: "calendar_6",
+                            button: "cal_img_6",
+                            ifFormat: "%B %e, %Y",
+                            onSelect: selectEuropeDate
+                        });
+                    </script>
+                    <p class="guidelines" id="guide_6"><small>Enter the date on which the prepayment amount was credited or the rate of interest change was applicable</small></p>
+                </li>
+                <li id="li_8">
+                    <label class="description" for="element_8">Type of Change </label>
+                    <div>
+                        <select class="element select medium" id="element_8" name="element_8">
+                            <option value="ONE_TIME" selected="selected">One time Prepayment</option>
+                            <option value="EMI_CHANGE">Change in EMI</option>
+                            <option value="ROI_CHANGE">Change in Rate of Interest</option>
+                        </select>
+                    </div>
+                </li>
+                <li id="li_7">
+                    <label class="description" for="element_7">Value</label>
+                    <div>
+                        <input id="element_7" name="element_7" class="element text medium" type="number" maxlength="255" value="" required />
+                    </div>
+                    <p class="guidelines" id="guide_7"><small>Enter the value of prepayment amount, new EMIs being paid or new rate of interest.</small></p>
+                </li>
+
+                <li class="buttons">
+                    <input type="hidden" name="form_id" value="630635" />
+                    <input id="btnAddPrepayment" class="button_text" type="button" name="btnAddPrepayment" value="Add Prepayment" onclick="return btnAddPrepayment_Click(); return false;" />
+                </li>
+            </ul>
+            <div style="page-break-after: always"></div>
+            <li>
+                <div id="divPrepaymentList"></div>
+            </li>
+
+            <hr />
+            <li class="buttons">
+                <input id="btnCalculate" class="button_text" type="button" name="btnCalculate" value="Calculate Mortgage and Amortization Schedule" onclick="return btnCalculate_Click(); return false;" />
+            </li>
+
+            <li>
+                <div id="divResultsSummary" style="padding-top: 10px"></div>
+            </li>
+
+            <li class="section_break">
+                <h3>Calculations</h3>
+            </li>
+            <div id="divResults" style="padding-top: 10px"></div>
+            <hr/>
+        </form>
+        
+        <div id="footer">
+            Form layout designed by <a target="_blank" href="http://www.phpform.org">pForm</a> | Amortization Formulae by <a target="_blank" href="http://www.hughchou.org/calc/formula.html">Hugh Chou</a>
+            <br />
+            <p>
+                <strong>Disclaimer</strong><br />
+                To make it easy for you to retain values, I store the values you enter into your own brower's local storage.
+                <br />
+                <a href="javascript:" onclick="return clearLS();">Click here</a> to clear your local storage.
+            </p>
+            <p>
+                <strong>Disclaimer 2</strong><br />
+                While I have tried my best to maintain accuracy in my calculations and formulae, please use your best judgement in matters of finance.
+                I cannot be help responsible for any loss or damages you encounter due to using of this tool.
+            </p>
+        </div>
+    </div>
+    <img id="bottom" src="images/bottom.png" alt="">
+
+    <script>
+        (function (i, s, o, g, r, a, m) {
+            i['GoogleAnalyticsObject'] = r; i[r] = i[r] || function () {
+                (i[r].q = i[r].q || []).push(arguments)
+            }, i[r].l = 1 * new Date(); a = s.createElement(o),
+            m = s.getElementsByTagName(o)[0]; a.async = 1; a.src = g; m.parentNode.insertBefore(a, m)
+        })(window, document, 'script', '//www.google-analytics.com/analytics.js', 'ga');
+
+        ga('create', 'UA-44237555-1', 'calculatehomeloaninterest.com');
+        ga('send', 'pageview');
+
+    </script>
+</body>
+</html>
