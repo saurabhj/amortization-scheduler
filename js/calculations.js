@@ -1,205 +1,149 @@
-﻿var PRE_PAYMENTS = new Array();
-var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/* Monthly loan calculations. All balances and payments use integer minor units. */
+(function (root) {
+    'use strict';
+    const MAX_MONTHS = 1200;
+    const MAX_AMOUNT = 1e12;
 
-function s4() {
-    return Math.floor((1 + Math.random()) * 0x10000)
-               .toString(16)
-               .substring(1);
-};
+    function amount(value, label, allowZero = false) {
+        const number = Number(value);
+        if (value === '' || !Number.isFinite(number) || number < 0 || number > MAX_AMOUNT || (!allowZero && number === 0)) {
+            throw new Error(`${label} must be ${allowZero ? 'zero or ' : ''}a positive number no greater than 1 trillion.`);
+        }
+        const cents = Math.round((number + Number.EPSILON) * 100);
+        if (!allowZero && cents === 0) throw new Error(`${label} must be at least 0.01.`);
+        return cents;
+    }
 
-function Guid() {
-    return s4() + s4() + '-' + s4() + '-' + s4() + '-' +
-           s4() + '-' + s4() + s4() + s4();
-}
+    function rate(value) {
+        const number = Number(value);
+        if (value === '' || !Number.isFinite(number) || number < 0 || number > 100) {
+            throw new Error('Annual interest must be between 0 and 100%.');
+        }
+        return number;
+    }
 
-function AddPrePayment(dateOfChange, typeOfChange, valueOfChange) {
-    var pp = new Object();
-    pp.id = Guid();
-    pp.dateOfChange = dateOfChange;
-    pp.typeOfChange = typeOfChange;
-    pp.valueOfChange = valueOfChange;
+    function parseDate(value) {
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+        if (!match) throw new Error('Enter a valid date.');
+        const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+        const date = new Date(year, month - 1, day);
+        if (year < 1900 || year > 9999 || date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+            throw new Error('Enter a valid date between 1900 and 9999.');
+        }
+        return { year, month, day, index: year * 12 + month - 1 };
+    }
 
-    PRE_PAYMENTS.push(pp);
-}
+    function dateAt(start, offset) {
+        const index = start.index + offset;
+        const year = Math.floor(index / 12), month = index % 12;
+        if (year > 9999) throw new Error('The payoff date is outside the supported date range.');
+        const day = Math.min(start.day, new Date(year, month + 1, 0).getDate());
+        return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
 
-function DeletePrePayment(obj) {
-    if (confirm("Are you sure?")) {
-        for (var i = 0; i < PRE_PAYMENTS.length; i++) {
-            if (PRE_PAYMENTS[i].id == obj.id) {
-                PRE_PAYMENTS.splice(i, 1);
-                break;
+    function installment(balance, months, annualRate) {
+        if (!Number.isInteger(months) || months < 1) throw new Error('There are no installments remaining to reduce.');
+        const monthlyRate = annualRate / 1200;
+        // log1p/expm1 avoid cancellation for very small interest rates.
+        const payment = monthlyRate === 0 ? balance / months : balance * monthlyRate / -Math.expm1(-months * Math.log1p(monthlyRate));
+        return Math.max(1, Math.round(payment));
+    }
+
+    function interest(balance, annualRate) {
+        return Math.round(balance * annualRate / 1200);
+    }
+
+    function remainingMonths(balance, emi, annualRate) {
+        for (let count = 1; count <= MAX_MONTHS; count++) {
+            const charge = interest(balance, annualRate);
+            if (emi <= charge) throw new Error('The EMI does not cover monthly interest. Increase the EMI or reduce the balance.');
+            balance -= Math.min(emi, balance + charge) - charge;
+            if (balance === 0) return count;
+        }
+        throw new Error('This loan would take more than 1,200 months to repay. Increase the EMI.');
+    }
+
+    function normalizeLoan(input) {
+        const months = Number(input.months);
+        if (!Number.isInteger(months) || months < 1 || months > MAX_MONTHS) throw new Error('Tenure must be a whole number from 1 to 1,200 months.');
+        return { principal: amount(input.principal, 'Loan amount'), months, annualRate: rate(input.annualRate), start: parseDate(input.startDate) };
+    }
+
+    function normalizeChanges(changes, start) {
+        return changes.map((change, order) => {
+            const date = parseDate(change.date);
+            if (date.index < start.index) throw new Error('A change cannot be before the first EMI month.');
+            if (!['ONE_TIME', 'EMI_CHANGE', 'ROI_CHANGE'].includes(change.type)) throw new Error('Select a valid change type.');
+            const effect = change.effect || 'REDUCE_TENURE';
+            if (!['REDUCE_TENURE', 'REDUCE_EMI'].includes(effect)) throw new Error('Select a valid prepayment option.');
+            return { ...change, effect, order, month: date.index - start.index, value: change.type === 'ROI_CHANGE' ? rate(change.value) : amount(change.value, 'Change amount') };
+        }).sort((a, b) => a.date.localeCompare(b.date) || a.order - b.order);
+    }
+
+    function schedule(loan, changes) {
+        let balance = loan.principal, annualRate = loan.annualRate;
+        let emi = installment(balance, loan.months, annualRate), payoffMonth = loan.months;
+        const initialEmi = emi, rows = [], used = new Set();
+        let totalInterest = 0, totalPaid = 0, totalPrepayment = 0;
+
+        for (let month = 0; balance > 0 && month < MAX_MONTHS; month++) {
+            const events = changes.filter(change => change.month === month);
+            let termsChanged = false;
+            for (const event of events) {
+                used.add(event.order);
+                if (event.type === 'ROI_CHANGE') { termsChanged ||= annualRate !== event.value; annualRate = event.value; }
+                if (event.type === 'EMI_CHANGE') { termsChanged ||= emi !== event.value; emi = event.value; }
             }
-        }
-
-        GeneratePrepaymentList("divPrepaymentList");
-    }
-}
-
-function GeneratePrepaymentList(divId) {
-    $("#" + divId).html("");
-
-    if (PRE_PAYMENTS.length == 0) {
-        return;
-    }
-
-    var table = $('<table></table>');
-
-    // Adding headers to the table
-    var header = "<tr><th>No</th><th>Date</th><th>Type</th><th>Value</th><th></th></tr>";
-    table.append(header);
-
-    var count = 1;
-    $(PRE_PAYMENTS).each(function () {
-        var row = $('<tr></tr>');
-
-        if (count % 2 == 0) {
-            row.addClass("even");
-        }
-        else {
-            row.addClass("odd");
-        }
-
-        var dt = new Date(this.dateOfChange);
-        var dtText = dt.getDate() + "-" + MONTHS[dt.getMonth()] + "-" + dt.getFullYear();
-
-        row.append('<td>' + count + '</td><td>' + dtText + '</td><td>' + this.typeOfChange + '</td><td>' + RoundNumber(this.valueOfChange,2) + '</td><td><a href=\'javascript:\' id=\'' + this.id + '\' onclick=\'return DeletePrePayment(this)\'><img src=\'images/delete.png\' /></a>');
-        table.append(row);
-        count++;
-    });
-
-    $("#" + divId).html(table);
-}
-
-function CalculateStuff(p, n, roi, sd) {
-    // Clearing the results
-    $("#divResults").html("");
-    $("#divResultsSummary").html("");
-
-    // j = interest per month / 100
-    var j = roi / 1200;
-
-    var m = (p * j) / (1 - Math.pow((1 + j), (n * -1)));
-    var originalTotalLoanAmount = m * n;
-
-    var actualLoanPaid = 0.0;
-    var latestEmi = m;
-
-    var bal = p;
-    var payment = 0;
-
-    var table = $('<table></table>');
-    var header = $('<tr></tr>');
-    header.append('<th>No.</th>');
-    header.append('<th>Date</th>');
-    header.append('<th>EMI Paid</th>');
-    header.append('<th>Interest Comp</th>');
-    header.append('<th>Principal Comp</th>');
-    header.append('<th>Remaining Principal</th>');
-
-    table.append(header);
-
-    while (bal > 0) {
-        var origDate = new Date(sd);
-        var currMonth = new Date(origDate.setMonth(origDate.getMonth() + payment));
-        var lumpsumPaid = 0.0;
-
-        var markRow = false;
-        // Going through all the payments to see if lumpsum or EMI was revised
-        for (var i = 0; i < PRE_PAYMENTS.length; i++) {
-            var pp = PRE_PAYMENTS[i];
-
-            var nextMonth = new Date(currMonth);
-            nextMonth.setMonth(currMonth.getMonth() + 1);
-
-            var doc = new Date(pp.dateOfChange);
-
-            if (doc >= currMonth && pp.dateOfChange < nextMonth) {
-                if (pp.typeOfChange == "ONE_TIME") {
-                    lumpsumPaid = lumpsumPaid + parseFloat(pp.valueOfChange);
-                    markRow = true;
-                } else if (pp.typeOfChange == "EMI_CHANGE") {
-                    latestEmi = parseFloat(pp.valueOfChange);
-                    markRow = true;
-                } else if (pp.typeOfChange == "ROI_CHANGE") {
-                    roi = parseFloat(pp.valueOfChange);
-                    j = roi / 1200;
-                    markRow = true;
+            const openingBalance = balance;
+            const charge = interest(balance, annualRate);
+            const requestedPrepayment = events.filter(event => event.type === 'ONE_TIME').reduce((sum, event) => sum + event.value, 0);
+            if (emi <= charge && emi + requestedPrepayment < balance + charge) {
+                throw new Error('The EMI does not cover monthly interest. Increase the EMI or reduce the balance.');
+            }
+            // The final scheduled installment reconciles accumulated cent rounding.
+            // A rate/manual EMI change establishes a new term instead of forcing payoff.
+            const payment = Math.min(balance + charge, !termsChanged && month + 1 === payoffMonth ? balance + charge : emi);
+            balance = balance + charge - payment;
+            if (balance > requestedPrepayment && termsChanged) {
+                payoffMonth = month + 1 + remainingMonths(balance, emi, annualRate);
+            }
+            let prepayment = 0;
+            for (const event of events.filter(event => event.type === 'ONE_TIME')) {
+                const applied = Math.min(event.value, balance);
+                balance -= applied;
+                prepayment += applied;
+                if (balance > 0 && applied > 0) {
+                    if (event.effect === 'REDUCE_EMI') {
+                        emi = installment(balance, payoffMonth - month - 1, annualRate);
+                    } else {
+                        payoffMonth = Math.min(payoffMonth, month + 1 + remainingMonths(balance, emi, annualRate));
+                    }
                 }
             }
-        }
-
-        var totalPaid = lumpsumPaid + latestEmi;
-
-        var h = bal * j; // Calculating monthly interest
-        var c = totalPaid - h; // Monthly payment - Interest = Principal Paid
-        bal = bal - c; // New balance remaining from total loan amount
-
-        var row = $('<tr></tr>');
-        if (payment % 2 == 0) {
-            row.addClass("even");
-        }
-        else {
-            row.addClass("odd");
-        }
-        
-        if(markRow) {
-            row.addClass("marked");
-        }
-
-        var balDiff = parseInt(bal) + parseInt(latestEmi);
-
-        if (balDiff != 0) {
-            row.append('<td>' + (payment + 1) + '</td>');
-            row.append('<td>' + MONTHS[currMonth.getMonth()] + '-' + currMonth.getFullYear() + '</td>');
-
-            if (bal > 0) {
-                row.append('<td>' + RoundNumber(totalPaid, 2) + '</td>');
-                row.append('<td>' + RoundNumber(h, 2) + '</td>');
-                row.append('<td>' + RoundNumber(c, 2) + '</td>');
-                row.append('<td>' + RoundNumber(bal, 2) + '</td>');
-            } else if (bal < 0) {
-                totalPaid = latestEmi + bal;
-                row.append('<td>' + RoundNumber(totalPaid, 2) + '</td>');
-                row.append('<td>' + RoundNumber(h, 2) + '</td>');
-                row.append('<td>' + RoundNumber(totalPaid - h, 2) + '</td>');
-                row.append('<td>' + RoundNumber(0, 2) + '</td>');
+            totalInterest += charge;
+            totalPaid += payment + prepayment;
+            totalPrepayment += prepayment;
+            if (![totalInterest, totalPaid, totalPrepayment].every(Number.isSafeInteger)) {
+                throw new Error('These amounts exceed the calculator’s safe precision. Use smaller loan amounts.');
             }
-            actualLoanPaid += totalPaid;
-            payment++;
+            rows.push({ number: month + 1, date: dateAt(loan.start, month), openingBalance, emi: payment, prepayment, interest: charge,
+                principal: openingBalance - balance, balance, annualRate, nextEmi: balance ? emi : 0, changed: events.length > 0,
+                unusedPrepayment: requestedPrepayment - prepayment });
         }
-        
-        table.append(row);
-        
+        if (balance > 0) throw new Error('This loan would take more than 1,200 months to repay. Increase the EMI.');
+        return { rows, initialEmi, totalInterest, totalPaid, totalPrepayment, payoffDate: rows.at(-1).date,
+            ignoredChanges: changes.filter(change => !used.has(change.order)).length };
     }
 
-    $("#divResults").html(table);
-    
-    // Filling in the summary details
-    $("#divResultsSummary").append('<strong>Summary</strong><br />');
-    var diff = originalTotalLoanAmount - actualLoanPaid;
+    function calculate(input, changes = []) {
+        const loan = normalizeLoan(input);
+        const baseline = schedule(loan, []);
+        const result = changes.length ? schedule(loan, normalizeChanges(changes, loan.start)) : baseline;
+        return { ...result, originalInterest: baseline.totalInterest, interestSaved: baseline.totalInterest - result.totalInterest,
+            monthsSaved: baseline.rows.length - result.rows.length };
+    }
 
-    var table2 = $('<table></table>');
-    table2.append('<tr><td>Loan Amount:</td><td>' + RoundNumber(p, 2) + '</td></tr>');
-    table2.append('<tr><td>Monthly EMI:</td><td>' + RoundNumber(m, 2) + '</td></tr>');
-    table2.append('<tr><td>Rate of Interest:</td><td>' + RoundNumber(roi, 2) + '%</td></tr>');
-    table2.append('<tr><td>Number of Months:</td><td>' + RoundNumber(n, 0) + ' months</td></tr>');
-    table2.append('<tr><td>Total payable to bank:</td><td>' + RoundNumber(originalTotalLoanAmount, 2) + '</td></tr>');
-    table2.append('<tr><td>Actual Loan Amount Paid:</td><td>' + RoundNumber(actualLoanPaid, 2) + '</td></tr>');
-    table2.append('<tr><td>Savings due to prepayment:</td><td>' + RoundNumber(Math.abs(diff), 2) + '</td></tr>');
-    table2.append('<tr><td>Savings in Percentage:</td><td>' + RoundNumber(((Math.abs(diff) * 100)/originalTotalLoanAmount), 2) + '%</td></tr>');
-    table2.append('<tr><td>New Tenure:</td><td>' + RoundNumber(payment, 0) + ' months</td></tr>');
-    
-    
-
-    $("#divResultsSummary").append(table2);
-}
-
-function RoundNumber(num, places) {
-    return numberWithCommas(parseFloat(num).toFixed(places));
-}
-
-function numberWithCommas(x) {
-    var parts = x.toString().split(".");
-    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-    return parts.join(".");
-}
+    const api = { calculate, parseDate };
+    if (typeof module !== 'undefined' && module.exports) module.exports = api;
+    else root.LoanCalculator = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
