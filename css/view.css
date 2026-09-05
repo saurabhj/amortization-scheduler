@@ -391,7 +391,7 @@ th {
     font-size:.8rem;
 }
 
-th:nth-child(2),td:nth-child(2) {
+thead th:nth-child(2),tbody td:nth-child(2) {
     text-align:left;
 }
 
