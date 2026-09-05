@@ -2,7 +2,10 @@
     'use strict';
     const $ = id => document.getElementById(id);
     const storageKey = 'amortization-scheduler:v2';
-    const money = cents => (cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const numberFormatKey = 'amortization-scheduler:number-format';
+    const formatter = locale => new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    let moneyFormatter = formatter('en-US');
+    const money = cents => moneyFormatter.format(cents / 100);
     const formatDate = value => {
         const { year, month, day } = LoanCalculator.parseDate(value);
         return new Date(year, month - 1, day).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
@@ -19,6 +22,17 @@
         $('storage-note').textContent = message;
         $('storage-note').hidden = false;
         document.querySelector('.local-badge').textContent = badge;
+    }
+
+    function loadNumberFormat() {
+        let locale = 'en-US';
+        try {
+            if (localStorage.getItem(numberFormatKey) === 'en-IN') locale = 'en-IN';
+        } catch (error) {
+            // The loan loader reports unavailable storage; formatting still works.
+        }
+        $('number-format').value = locale;
+        moneyFormatter = formatter(locale);
     }
 
     function load() {
@@ -174,6 +188,17 @@
 
     $('loan-form').addEventListener('submit', event => { event.preventDefault(); refresh(); });
     $('loan-form').addEventListener('change', () => refresh());
+    $('number-format').addEventListener('change', () => {
+        const locale = $('number-format').value === 'en-IN' ? 'en-IN' : 'en-US';
+        moneyFormatter = formatter(locale);
+        renderChanges();
+        refresh(false);
+        try {
+            localStorage.setItem(numberFormatKey, locale);
+        } catch (error) {
+            storageNotice('The number format has changed, but your browser could not save this preference.');
+        }
+    });
     $('change-type').addEventListener('change', updateChangeType);
     $('cancel-edit').addEventListener('click', cancelEdit);
     $('change-form').addEventListener('submit', event => {
@@ -191,5 +216,5 @@
         if (!confirm('Reset this calculator’s saved loan and changes?')) return;
         changes = []; fillLoan(defaults()); cancelEdit(); renderChanges(); refresh();
     });
-    fillLoan(load()); cancelEdit(); renderChanges(); refresh(false);
+    loadNumberFormat(); fillLoan(load()); cancelEdit(); renderChanges(); refresh(false);
 })();

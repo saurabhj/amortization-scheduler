@@ -14,6 +14,8 @@ Then open http://127.0.0.1:8765. Loan details and changes save to this browser a
 
 The app reads the original calculator's jStorage data on the same origin. Existing prepayments default to **Reduce tenure**. New data uses a separate versioned key, leaving the original data available if you switch back to the old branch. Reset replaces only this calculator's new saved state; it does not clear unrelated browser storage.
 
+Choose **Number format** under the loan inputs to display US grouping (`1,000,000.00`) or Indian grouping (`10,00,000.00`, using lakhs and crores). The preference updates all monetary results, schedule totals and listed changes immediately, and is saved separately on this device. It changes number grouping only, without converting currency or changing calculations. Numeric input fields remain ungrouped for easy editing. Resetting the loan keeps this display preference.
+
 ## Prepayment options
 
 - **Reduce tenure:** keep the EMI and finish earlier.

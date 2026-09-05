@@ -86,6 +86,12 @@ h2 {
     margin-bottom:18px;
 }
 
+.number-format-control {
+    margin-top:20px;
+    padding-top:18px;
+    border-top:1px solid var(--border);
+}
+
 label,legend {
     display:block;
     font-size:.875rem;

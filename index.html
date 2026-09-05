@@ -23,6 +23,14 @@
                 <label for="startDate">First EMI date</label><input id="startDate" name="startDate" type="date" min="1900-01-01" max="9999-12-31" required>
                 <button class="primary full-width" type="submit">Calculate schedule <span aria-hidden="true">→</span></button>
             </form>
+            <div class="number-format-control">
+                <label for="number-format">Number format</label>
+                <select id="number-format" aria-describedby="number-format-help">
+                    <option value="en-US">US · 1,000,000.00</option>
+                    <option value="en-IN">Indian · 10,00,000.00</option>
+                </select>
+                <p id="number-format-help" class="helper">US: thousands & millions. Indian: lakhs & crores.</p>
+            </div>
             <p class="helper">Use the same currency for all amounts.</p>
         </section>
         <section class="panel changes-panel" aria-labelledby="changes-heading">
