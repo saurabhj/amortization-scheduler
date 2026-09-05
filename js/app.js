@@ -82,6 +82,7 @@
         cell.textContent = text;
         if (colSpan) cell.colSpan = colSpan;
         row.append(cell);
+        return cell;
     }
 
     function render(result) {
@@ -96,22 +97,33 @@
         $('summary-savings').textContent = money(Math.abs(result.interestSaved));
         $('comparison-label').textContent = changes.length ? `${changes.length} planned change${changes.length === 1 ? '' : 's'}` : 'Original loan';
         $('row-count').textContent = `${result.rows.length} installments`;
-        const notes = ['Highlighted rows include a prepayment or a change. The final installment settles any rounding difference.'];
+        const notes = ['Blue rows include a prepayment or a change; the current month has a green border. The final installment settles any rounding difference.'];
         if (result.ignoredChanges) notes.push(`${result.ignoredChanges} change(s) after payoff were not applied.`);
         const unused = result.rows.reduce((sum, row) => sum + row.unusedPrepayment, 0);
         if (unused) notes.push(`${money(unused)} of requested prepayments was not needed to close the loan.`);
         $('schedule-note').textContent = notes.join(' ');
         const fragment = document.createDocumentFragment();
+        const currentMonth = localDate(new Date()).slice(0, 7);
         for (const payment of result.rows) {
             const row = document.createElement('tr');
-            if (payment.changed) row.className = 'changed';
+            const isCurrentMonth = payment.date.slice(0, 7) === currentMonth;
+            row.className = [payment.changed ? 'changed' : '', isCurrentMonth ? 'current-month' : ''].filter(Boolean).join(' ');
             [payment.number, formatDate(payment.date), money(payment.emi), payment.prepayment ? money(payment.prepayment) : '—', money(payment.interest), money(payment.principal), money(payment.balance)].forEach(value => addCell(row, value));
+            if (isCurrentMonth) {
+                row.setAttribute('aria-current', 'date');
+                const label = document.createElement('span');
+                label.className = 'current-month-label';
+                label.textContent = 'Current month';
+                row.children[1].append(label);
+            }
             fragment.append(row);
         }
         $('schedule-body').replaceChildren(fragment);
         const total = document.createElement('tr');
-        addCell(total, 'Total', 2);
-        [result.totalPaid - result.totalPrepayment, result.totalPrepayment, result.totalInterest, result.totalPaid - result.totalInterest, 0].forEach(value => addCell(total, money(value)));
+        addCell(total, 'Total', 2).className = 'total-label';
+        [result.totalPaid - result.totalPrepayment, result.totalPrepayment, result.totalInterest, result.totalPaid - result.totalInterest, 0].forEach(value => {
+            addCell(total, money(value)).className = 'total-amount';
+        });
         $('schedule-total').replaceChildren(total);
         $('results').hidden = false;
         $('error').hidden = true;

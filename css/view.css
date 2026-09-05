@@ -407,10 +407,33 @@ tbody tr.changed td:first-child {
     box-shadow:inset 3px 0 var(--blue);
 }
 
+tbody tr.current-month td {
+    background:#f0f8f4;
+    border-top:1px solid #8db5a5;
+    border-bottom:1px solid #8db5a5;
+}
+
+.current-month-label {
+    display:block;
+    color:#346a54;
+    font-size:.75rem;
+    font-weight:600;
+    margin-top:3px;
+}
+
 tfoot td {
     background:#f0f4f9;
     font-weight:650;
     border:0;
+}
+
+/* Footer cell positions differ from body columns because the label spans two. */
+#schedule-total td.total-amount {
+    text-align:right;
+}
+
+#schedule-total td.total-label {
+    text-align:left;
 }
 
 .error {
