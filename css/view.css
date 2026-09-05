@@ -354,7 +354,7 @@ legend {
 .schedule-panel {
     margin-top:22px;
     padding:0;
-    overflow:hidden;
+    overflow:visible;
 }
 
 .schedule-panel>.section-heading {
@@ -362,8 +362,8 @@ legend {
 }
 
 .table-scroll {
-    overflow:auto;
-    max-height:580px;
+    /* Let the page scroll, so column headings can stick to the viewport. */
+    overflow:visible;
 }
 
 table {
@@ -462,6 +462,10 @@ a {
 }
 
 @media(max-width:950px) {
+    .table-scroll {
+        /* Narrow screens still allow sideways scrolling, with no height limit. */
+        overflow-x:auto;
+    }
     .workspace {
         grid-template-columns:1fr;
     }
